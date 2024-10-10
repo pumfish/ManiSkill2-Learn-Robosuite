@@ -78,7 +78,7 @@ class EpisodicStatistics:
 
     def get_sync_stats(self):
         num_ep = GDict(len(self.history["rewards"])).allreduce(op="SUM", wrapper=False)
-        
+
         history_min, history_max, history_sum = {}, {}, {}
         for key, value in self.history.items():
             value = np.stack(value, axis=0)
@@ -124,7 +124,7 @@ class EpisodicStatistics:
         ret = {}
         for key in self.info_keys_mode:
             if key in history_mean:
-                out_key = key if '/' in key else f"env/{key}" 
+                out_key = key if '/' in key else f"env/{key}"
                 ret[f"{out_key}_mean"] = history_mean[key]
                 ret[f"{out_key}_min"] = history_min[key]
                 ret[f"{out_key}_max"] = history_max[key]
@@ -138,7 +138,7 @@ def train_rl(
     replay,
     on_policy,
     work_dir,
-    
+
     expert_replay=None,
     recent_traj_replay=None,
 
@@ -276,7 +276,7 @@ def train_rl(
                 start_time = time.time()
                 agent.eval()  # For things like batch norm
                 trajectories = rollout.forward_with_policy(agent, n_steps, on_policy, replay)
-
+                # breakpoint()
                 if not print_replay_shape:
                     print_replay_shape = True
                     logger.info(f"Replay buffer shape: {replay.memory.shape}.")
