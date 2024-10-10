@@ -199,7 +199,7 @@ class ManiSkill2_ObsWrapper(ExtendedWrapper, ObservationWrapper):
         fix_seed=None,
     ):
         super().__init__(env)
-        
+
         self.ms2_env_name = self.env.spec.id
         self.obs_frame = obs_frame
         if self.obs_mode == "state":
@@ -240,8 +240,8 @@ class ManiSkill2_ObsWrapper(ExtendedWrapper, ObservationWrapper):
         )
         from mani_skill2.utils.sapien_utils import vectorize_pose
         from sapien.core import Pose
-        
-        
+
+
         if self.obs_mode == "state":
             return observation
 
@@ -249,7 +249,7 @@ class ManiSkill2_ObsWrapper(ExtendedWrapper, ObservationWrapper):
         # exit(0)
 
         # Note that rgb information returned from the environment must have range [0, 255]
-        
+
         # Uncomment this code if you are using earlier version of ManiSkill2 before May 25, 2023
         # if 'OpenCabinet' in self.ms2_env_name or 'PushChair' in self.ms2_env_name or 'MoveBucket' in self.ms2_env_name:
         #     # For envs migrated from ManiSkill1, we need to manually calculate the robot pose and the end-effector pose(s)
@@ -266,7 +266,7 @@ class ManiSkill2_ObsWrapper(ExtendedWrapper, ObservationWrapper):
         #     else:
         #         assert len(hand_tcp_links) > 1
         #         observation["extra"]["tcp_pose"] = np.stack([vectorize_pose(l.get_pose()) for l in hand_tcp_links], axis=0) # [nhands, 7], multi-arm envs
-        
+
         # Comment this portion of code out if you are using earlier version of ManiSkill2 before May 25, 2023
         if 'PushChair' in self.ms2_env_name or 'MoveBucket' in self.ms2_env_name:
             try:
@@ -289,7 +289,7 @@ class ManiSkill2_ObsWrapper(ExtendedWrapper, ObservationWrapper):
              'agent':
                 {'qpos': 9, 'qvel': 9, 'controller': {'arm': {}, 'gripper': {}}, 'base_pose': 7},
              'camera_param':
-                {'base_camera': {'extrinsic_cv': (4, 4), 'cam2world_gl': (4, 4), 'intrinsic_cv': (3, 3)}, 
+                {'base_camera': {'extrinsic_cv': (4, 4), 'cam2world_gl': (4, 4), 'intrinsic_cv': (3, 3)},
                 'hand_camera': {'extrinsic_cv': (4, 4), 'cam2world_gl': (4, 4), 'intrinsic_cv': (3, 3)}}
              'extra':
                 {'tcp_pose': 7, 'goal_pos': 3}}
@@ -298,8 +298,8 @@ class ManiSkill2_ObsWrapper(ExtendedWrapper, ObservationWrapper):
             obs = observation
             rgb, depth, segs = [], [], []
             imgs = obs["image"]
-            
-            # IMPORTANT: the order of cameras can be different across different maniskill2 versions; 
+
+            # IMPORTANT: the order of cameras can be different across different maniskill2 versions;
             # thus we have to explicitly list out camera names to ensure that camera orders are consistent
             if 'hand_camera' in imgs.keys():
                 cam_names = ['hand_camera', 'base_camera']
@@ -307,9 +307,9 @@ class ManiSkill2_ObsWrapper(ExtendedWrapper, ObservationWrapper):
                 cam_names = ['overhead_camera_0', 'overhead_camera_1', 'overhead_camera_2']
             else:
                 raise NotImplementedError()
-            
+
             # Process RGB and Depth images
-            for cam_name in cam_names: 
+            for cam_name in cam_names:
                 rgb.append(imgs[cam_name]["rgb"])  # each [H, W, 3]
                 depth.append(imgs[cam_name]["depth"])  # each [H, W, 1]
                 if "Segmentation" in imgs[cam_name].keys():
@@ -369,10 +369,10 @@ class ManiSkill2_ObsWrapper(ExtendedWrapper, ObservationWrapper):
                 )
             if "tcp_pose" in obs["extra"].keys():
                 obs["extra"]["tcp_pose"] = obs["extra"]["tcp_pose"].reshape(-1)
-            
+
             obs['extra'].pop('target_points', None)
             obs.pop('camera_param', None)
-            
+
             s = flatten_state_dict(obs) # Other observation keys should be already ordered and such orders shouldn't change across different maniskill2 versions, so we just flatten them
 
             # Resize RGB and Depth images
@@ -440,15 +440,16 @@ class ManiSkill2_ObsWrapper(ExtendedWrapper, ObservationWrapper):
                 for k in pointcloud.keys():
                     pointcloud[k] = pointcloud[k][mask]
                 pointcloud["xyz"] = xyz[mask]
-                
+
             # Initialize return dict
             ret = {
                 mode: pointcloud[mode]
                 for mode in ["xyz", "rgb"]
                 if mode in pointcloud
             }
-            
+
             # Process observation point cloud segmentations, if given
+            breakpoint()
             if "visual_seg" in pointcloud and "actor_seg" in pointcloud:
                 visual_seg = pointcloud["visual_seg"].squeeze()
                 actor_seg = pointcloud["actor_seg"].squeeze()
@@ -659,7 +660,7 @@ class ManiSkill2_ObsWrapper(ExtendedWrapper, ObservationWrapper):
             return
 
         img = self.env.render(*args, **kwargs)
-        
+
         if isinstance(img, dict):
             if "world" in img:
                 img = img["world"]
@@ -681,7 +682,7 @@ class ManiSkill2_ObsWrapper(ExtendedWrapper, ObservationWrapper):
 
 
 class RenderInfoWrapper(ExtendedWrapper):
-            
+
     def step(self, action):
         obs, rew, terminated, truncated, info = super().step(action)
         info["reward"] = rew
@@ -696,7 +697,7 @@ class RenderInfoWrapper(ExtendedWrapper):
 
     def render(self, **kwargs):
         from maniskill2_learn.utils.image.misc import put_info_on_image
-        
+
         if self.env.render_mode in ["rgb_array", "cameras"]:
             img = super().render(**kwargs)
             return put_info_on_image(

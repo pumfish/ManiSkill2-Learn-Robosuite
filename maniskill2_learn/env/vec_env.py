@@ -22,6 +22,9 @@ from maniskill2_learn.utils.math import split_num
 from .action_space_utils import stack_action_space
 from .env_utils import build_env, get_max_episode_steps, convert_observation_to_space
 from .wrappers import ExtendedEnv, BufferAugmentedEnv, ExtendedWrapper
+# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+from .robo_wrappers import RoboExtendedEnv
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 """
 @property
@@ -40,9 +43,14 @@ def idle_idx(self):
 
 
 def create_buffer_for_env(env, num_envs=1, shared_np=True):
-    assert isinstance(env, ExtendedEnv)
+    assert isinstance(env, ExtendedEnv) or isinstance(env, RoboExtendedEnv)
     obs = env.reset()
-    item = [obs, np.float32(1.0), True, True, GDict(env.step(env.action_space.sample())[-1]).to_array().float(), env.render()]
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    if isinstance(env, ExtendedEnv):
+        item = [obs, np.float32(1.0), True, True, GDict(env.step(env.action_space.sample())[-1]).to_array().float(), env.render()]
+    elif isinstance(env, RoboExtendedEnv):
+        item = [obs, np.float32(1.0), True, True, GDict(env.step(env.action_space.sample())[-1]).to_array().float(), None]
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     buffer = DictArray(GDict(item).to_array(), capacity=num_envs)
     if shared_np:
         buffer = SharedDictArray(buffer)
@@ -153,7 +161,7 @@ class UnifiedVectorEnvAPI(ExtendedWrapper):
         term_or_trunc = np.logical_or(terminated, truncated)
         if np.any(term_or_trunc) and restart:
             self.reset(idx=np.where(term_or_trunc[..., 0])[0])
-            
+
         return dict(
             obs=obs,
             next_obs=next_obs,
@@ -196,9 +204,10 @@ class VectorEnvBase(Env):
             return None
         else:
             return self.get_attr(name, idx)
-            
+
     def _init_obs_space(self):
-        self.observation_space = convert_observation_to_space(self.reset(idx=np.arange(self.num_envs)))
+        observation = self.reset(idx=np.arange(self.num_envs))
+        self.observation_space = convert_observation_to_space(observation)
 
     def _assert_id(self, idx=None):
         raise NotImplementedError
@@ -282,6 +291,15 @@ class SingleEnv2VecEnv(VectorEnvBase):
         return self._unsqueeze(self._env.step(actions[0]))
 
     def render(self, idx=None):
+        #TODO: get img for save_video
+        # robosuite can not call back render() in unrender mode
+        # robsuite has other method to get imgs
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        if isinstance(self._env, RoboExtendedEnv):
+            img = self._env.get_obs_img()
+            return self._unsqueeze(img)
+        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        # return shape (1, h, w, 3)
         return self._unsqueeze(self._env.render())
 
     def step_states_actions(self, *args, **kwargs):
@@ -326,6 +344,8 @@ class VectorEnv(VectorEnvBase):
             assert self.workers[i].is_idle, f"Cannot interact with environment {i} which is stepping now."
 
     def reset(self, idx=None, *args, **kwargs):
+        #TODO: robosuit env return a list, need a dict
+        #TODO: check MS reset return
         args, kwargs = list(args), dict(kwargs)
         all_kwargs = GDict([args, kwargs])
         for i in range(len(idx)):
@@ -488,7 +508,7 @@ class SapienThreadEnv(VectorEnvBase):
                         if not rew_only:
                             self.workers[i].call_renderer_async(mode="o")
                             render_jobs.append(i)
-    
+
         for i in render_jobs:
             self.workers[i].get_obs(sync=False)
         with sapien.core.ProfilerBlock("wait for render"):

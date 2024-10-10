@@ -8,6 +8,9 @@ from maniskill2_learn.utils.meta import Registry, build_from_cfg, dict_of, get_l
 from .action_space_utils import StackedDiscrete, unstack_action_space
 from .wrappers import ManiSkill2_ObsWrapper, RenderInfoWrapper, ExtendedEnv, BufferAugmentedEnv, build_wrapper
 
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
 ENVS = Registry("env")
 
 
@@ -44,6 +47,11 @@ def convert_observation_to_space(observation):
 def get_gym_env_type(env_name):
     import_env()
     if env_name not in registry:
+        #TODO: add robosuite entry
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        if env_name in ['Lift', 'Stack', 'Jimu']:
+            return env_name
+        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         raise ValueError("No such env")
     try:
         entry_point = registry[env_name].entry_point
@@ -89,6 +97,10 @@ def get_max_episode_steps(env):
     elif hasattr(env.unwrapped, "_max_episode_steps"):
         # For env that does not use TimeLimit, e.g. ManiSkill
         return env.unwrapped._max_episode_steps
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    elif hasattr(env, "horizon"):
+        return env.horizon
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     else:
         raise NotImplementedError("Your environment needs to contain the attribute _max_episode_steps!")
 
@@ -109,15 +121,31 @@ def make_gym_env(
     If we want to add custom wrapper, we need to unwrap the env if the original env is wrapped by TimeLimit wrapper.
     All environments will have ExtendedTransformReward && SerializedInfoEnv outside, also the info dict is always serailzed!
     """
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    if env_name in ['Lift', 'Stack', 'Jimu']:
+        env = make_robosuite_env(
+                env_name=env_name,
+                unwrapped=unwrapped,
+                horizon=horizon,
+                time_horizon_factor=time_horizon_factor,
+                stack_frame=stack_frame,
+                use_cost=use_cost,
+                reward_scale=reward_scale,
+                worker_id=worker_id,
+                buffers=buffers,
+                **kwargs,)
+        return env
+    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     import_env()
     kwargs = dict(kwargs)
     kwargs.pop("multi_thread", None)
+
     env_type = get_gym_env_type(env_name)
     if env_type not in ["mani_skill2",]:
         # For environments that cannot specify GPU, we pop device
         kwargs.pop("device", None)
-    
+
     if env_type == 'mani_skill2' and 'device' in kwargs.keys():
         device = kwargs.pop('device')
         if 'renderer_kwargs' not in kwargs.keys():
@@ -140,7 +168,7 @@ def make_gym_env(
         fix_seed = kwargs.pop("fix_seed", None)
         if 'render_mode' not in kwargs.keys():
             kwargs['render_mode'] = 'rgb_array'
-            
+
     env = gym.make(env_name, **kwargs)
     if env is None:
         print(f"No {env_name} in gymnasium")
@@ -162,8 +190,8 @@ def make_gym_env(
 
     if env_type == "mani_skill2":
         env = RenderInfoWrapper(env)
-        env = ManiSkill2_ObsWrapper(env, img_size=img_size, 
-            n_points=n_points, n_goal_points=n_goal_points, obs_frame=obs_frame, 
+        env = ManiSkill2_ObsWrapper(env, img_size=img_size,
+            n_points=n_points, n_goal_points=n_goal_points, obs_frame=obs_frame,
             ignore_dones=ignore_dones, fix_seed=fix_seed)
 
     if extra_wrappers is not None:
@@ -187,6 +215,115 @@ def make_gym_env(
 
 
 ENVS.register_module("gym", module=make_gym_env)
+
+
+#TODO: modify make_robosuite_env
+## >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+def import_robosuite():
+    import sys
+    sys.path.append("/root/heguanhua/Work/robosuite_jimu")
+    import robosuite as suite
+    import robosuite.macros as macros
+    from robosuite.wrappers import Wrapper
+    from robosuite.controllers import load_controller_config
+    macros.IMAGE_CONVENTION = "opencv"
+
+    from .robo_wrappers import RoboExtendedEnv
+
+
+def make_robosuite_env(
+    env_name,
+    unwrapped=False,
+    horizon=None,
+    time_horizon_factor=1,
+    stack_frame=1,
+    use_cost=False,
+    reward_scale=1,
+    worker_id=None,
+    buffers=None,
+    **kwargs,
+):
+    # import_robosuite()
+    import sys
+    sys.path.append("/root/heguanhua/Work/robosuite_jimu")
+    import robosuite as suite
+    import robosuite.macros as macros
+    from robosuite.wrappers import Wrapper, GymWrapper
+    from robosuite.controllers import load_controller_config
+    macros.IMAGE_CONVENTION = "opencv"
+
+    from .robo_wrappers import RoboExtendedEnv, RoboBufferAugmentedEnv, MyGymWrapper
+
+    kwargs = dict(kwargs)
+
+    kwargs.pop("multi_thread", None)
+    if "device" in kwargs.keys():
+        device = kwargs.pop("device")
+        if "renderer_kwargs" not in kwargs.keys():
+            kwargs["renderer_kwargs"] = {}
+        kwargs["renderer_kwargs"]["device"] = device
+        gpu_id = int(device.split(":")[-1])
+
+    # extra kwargs for maniskill2
+    extra_wrappers = kwargs.pop("extra_wrappers", None)
+    img_size = kwargs.pop("img_size", None)
+    n_points = kwargs.pop("n_points", 1200)
+    n_goal_points = kwargs.pop("n_goal_points", -1)
+    obs_frame = kwargs.pop("obs_frame", "ee")
+    #XXX: "ignore_dones" must be False in Robosuite env
+    #XXX: else can't return true, lead to endless sample
+    # ignore_dones = kwargs.pop("ignore_dones", False)
+    ignore_dones = False
+    fix_seed = kwargs.pop("fix_seed", None)
+    if "render_mode" not in kwargs.keys():
+        kwargs["rendeer_mode"] = 'rgb_array'
+    obs_mode = kwargs["obs_mode"]
+
+    # kwargs for robosuite
+    control_freq = kwargs.pop("control_freq", None) or 20
+    horizon = horizon or 200
+    camera_names = kwargs.pop("camera_names", None) or ["frontview", "robot0_eye_in_hand"]
+    reward_shaping = kwargs["reward_mode"]
+
+    robo_kwargs = {
+            "n_points": n_points,
+            "n_goal_points": n_goal_points,
+            "obs_frame": obs_frame,
+            "obs_mode": obs_mode,
+            "env_name": env_name}
+
+    # make env
+    controller_config = load_controller_config(default_controller="OSC_POSE")
+    env = suite.make(env_name=env_name,
+                     robots='UR5e',
+                     controller_configs=controller_config,
+                     control_freq=control_freq,
+                     horizon=horizon,
+                     use_object_obs=False,
+                     use_camera_obs=True,
+                     camera_names=camera_names,
+                     camera_depths=True,
+                     camera_heights=128,
+                     camera_widths=128,
+                     ignore_done=ignore_dones,
+                     reward_shaping=reward_shaping,
+                     render_gpu_device_id=gpu_id)
+    env = MyGymWrapper(env, robo_kwargs)
+    if env is None:
+        print(f"No {env_name} in robosuite")
+        exit(0)
+
+    # robosuite has param:horizion can limit the max episode steps
+
+    #TODO: gym is old version
+    #TODO: robosuite need add early terminate
+    env = RoboExtendedEnv(env, reward_scale, use_cost)
+
+    if buffers is not None:
+        env = RoboBufferAugmentedEnv(env, buffers=buffers)
+    return env
+
+## <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 
 def build_env(cfg, **kwargs):

@@ -263,7 +263,7 @@ class Evaluation:
         seed=None,
         **kwargs,
     ):
-        
+
         self.vec_env = build_vec_env(env_cfg, seed=seed)
         self.vec_env.reset()
         self.n = 1
@@ -278,7 +278,7 @@ class Evaluation:
 
         self.video_format = kwargs.get("video_format", "mp4")
         self.video_fps = kwargs.get("fps", 20)
-        
+
         self.log_every_episode = kwargs.get("log_every_episode", True)
         self.log_every_step = kwargs.get("log_every_step", False)
 
@@ -400,7 +400,7 @@ class Evaluation:
             image = self.vec_env.render()[0, ..., ::-1]
             if self.video_writer is None:
                 self.video_file = osp.join(self.video_dir, f"{self.episode_id}.{self.video_format}")
-                
+
                 self.video_writer = cv2.VideoWriter(
                     self.video_file, CV_VIDEO_CODES[self.video_format], self.video_fps, (image.shape[1], image.shape[0])
                 )
